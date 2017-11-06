@@ -68,7 +68,16 @@ unsigned long findWhatLine(long *newLines, int max, unsigned long charNum) {
     return max;
 }
 
-void printResult(char* text_source, unsigned long text_source_size, int *result, unsigned long count, unsigned long resultCount, size_t local, unsigned long psize) {
+void printd2Darray(int *array, int rowSize, int columnSize) {
+    for (int i = 0; i < columnSize; i++) {
+        for (int j = 0; j < rowSize; j++) {
+            printf("%d ", *(array + (i * columnSize) + j));
+        }
+        printf("\n");
+    }
+}
+
+void printResult(char* text_source, unsigned long text_source_size, int *result, unsigned long count, size_t local, unsigned long psize) {
     int numberOfFinds = 0;
     long *newLines = (long*)malloc(text_source_size * sizeof(int));
     
@@ -80,15 +89,18 @@ void printResult(char* text_source, unsigned long text_source_size, int *result,
         }
     }
     
-    unsigned long partSize = count / resultCount;
+    unsigned long partSize = count / local;
     if (partSize < psize) {
         partSize = psize;
     }
-    for (int i = 0; i < local; i++) {
+//    printd2Darray(result, local, partSize);
+    for (int i = 0; i < local * partSize; i++) {
         if (result[i] != 0){
             numberOfFinds++;
-//            printf("Find match on char %lu\n", result[i] + 1 + (i * partSize));
-            printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1 + (i * partSize)));
+            int threadId = floor(i / partSize);
+            printf("Find match on char %lu\n", result[i] + 1 + (threadId * partSize));
+            
+//            printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1 + (threadId * partSize)));
         }
     }
     
@@ -256,12 +268,21 @@ int main(int argc, char** argv)
         exit(1);
     }
     
+    unsigned long resultCount = local;
+    unsigned long partSize = count / resultCount;
+    
+    
+    if (partSize < psize) {
+        partSize = psize;
+    }
+    int results[local * partSize];
+    
     // Create the input and output arrays in device memory for our calculation
     //
     input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * count, NULL, NULL);
     patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * strlen(pattern), NULL, NULL);
     computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(int) * strlen(pattern), NULL, NULL);
-    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int) * local, NULL, NULL);
+    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int) * local * partSize, NULL, NULL);
     
     if (!input || !output)
     {
@@ -278,7 +299,7 @@ int main(int argc, char** argv)
         exit(1);
     }
     
-    err = clEnqueueWriteBuffer(commands, patternMem, CL_TRUE, 0, sizeof(char) * strlen(pattern), pattern, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(commands, patternMem, CL_TRUE, 0, sizeof(char) * psize, pattern, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to write to source pattern!\n");
@@ -286,7 +307,7 @@ int main(int argc, char** argv)
     }
     
     int *pi = compute_prefix_function(pattern, psize);
-    err = clEnqueueWriteBuffer(commands, computePatternMem, CL_TRUE, 0, sizeof(char) * strlen(pattern), pi, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(commands, computePatternMem, CL_TRUE, 0, sizeof(char) * psize, pi, 0, NULL, NULL);
     
     if (err != CL_SUCCESS)
     {
@@ -300,14 +321,6 @@ int main(int argc, char** argv)
     // Set the arguments to our compute kernel
     //
     
-    unsigned long resultCount = local;
-    int results[local];
-    unsigned long partSize = count / resultCount;
-    
-    
-    if (partSize < psize) {
-        partSize = psize;
-    }
     
     err = 0;
     err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -316,7 +329,7 @@ int main(int argc, char** argv)
     err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &computePatternMem);
     err |= clSetKernelArg(kernel, 4, sizeof(unsigned long), &psize);
     err |= clSetKernelArg(kernel, 5, sizeof(unsigned int), &count);
-    err |= clSetKernelArg(kernel, 6, sizeof(unsigned int), &resultCount);
+    err |= clSetKernelArg(kernel, 6, sizeof(unsigned int), &local);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to set kernel arguments! %d\n", err);
@@ -342,7 +355,7 @@ int main(int argc, char** argv)
     
     // Read back the results from the device to verify the output
     //
-    err = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(int) * local, results, 0, NULL, NULL);
+    err = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(int) * local * partSize, results, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to read output array! %d\n", err);
@@ -357,12 +370,14 @@ int main(int argc, char** argv)
     printf("Input size - %luB\n", count);
     printf("Number of threads - %lu\n-------------\n", local);
     
-    printResult(text_source_str, text_source_size, results, count, resultCount, local, psize);
+    printResult(text_source_str, text_source_size, results, count, local, psize);
     
     // Shutdown and cleanup
     //
     clReleaseMemObject(input);
     clReleaseMemObject(output);
+    clReleaseMemObject(patternMem);
+    clReleaseMemObject(computePatternMem);
     clReleaseProgram(program);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(commands);

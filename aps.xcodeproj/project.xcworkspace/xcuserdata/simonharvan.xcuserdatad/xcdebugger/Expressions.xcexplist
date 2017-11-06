@@ -6,16 +6,24 @@
          contextName = "GLOBAL">
          <PersistentStrings>
             <PersistentString
-               value = "pi[2]">
+               value = "results[i]">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
       <ContextState
          contextName = "main:main.c">
+         <PersistentStrings>
+            <PersistentString
+               value = "results[1]">
+            </PersistentString>
+         </PersistentStrings>
       </ContextState>
       <ContextState
          contextName = "printResult:main.c">
          <PersistentStrings>
+            <PersistentString
+               value = "*(*(result))">
+            </PersistentString>
             <PersistentString
                value = "newLines[7]">
             </PersistentString>

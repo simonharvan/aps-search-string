@@ -8,25 +8,31 @@
 //
 
 
-__global int kmp(__global char *target, int tsize, __global char* pattern, __global int *pi, unsigned long psize)
+__global void kmp(__global char *target, int tsize, __global char* pattern, __global int *pi, unsigned long psize, __global int *output, int threadId)
 {
     int i;
     int k = -1;
-    if (!pi)
-        return 0;
+    int counter = threadId;
+    if (!pi){
+        output[counter] =  0;
+        return;
+    }
     for (i = 0; i < tsize; i++) {
         while (k > -1 && pattern[k+1] != target[i])
             k = pi[k];
         if (target[i] == pattern[k+1])
             k++;
         if (k == psize - 1) {
-            return i-k - 1;
+            output[counter] = i - k - 1;
+            counter++;
         }
     }
-    return 0;
+    output[counter] =  0;
+    counter++;
+    return;
 }
 
-__kernel void run(__global char* input, __global int* output, __global char* pattern, __global int* pi, const unsigned long psize, const unsigned long inputSize, const unsigned long resultCount)
+__kernel void run(__global char* input, __global int *output, __global char* pattern, __global int* pi, const unsigned long psize, const unsigned long inputSize, const unsigned long resultCount)
 {
     
     int threadId = get_global_id(0);
@@ -39,12 +45,10 @@ __kernel void run(__global char* input, __global int* output, __global char* pat
         return;
     }
     
-    
-    
     if (((threadId) * partSize) + psize - 1 > inputSize) {
-        output[threadId] = kmp(input + (threadId * partSize), partSize, pattern, pi, psize);
+        kmp(input + (threadId * partSize), partSize, pattern, pi, psize, output, threadId);
     }else {
-        output[threadId] = kmp(input + (threadId * partSize), partSize + psize - 1, pattern, pi, psize);
+        kmp(input + (threadId * partSize), partSize + psize - 1, pattern, pi, psize, output, threadId);
     }
 }
 
