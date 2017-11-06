@@ -1,14 +1,10 @@
 //
 // File:       main.c
 //
-// Abstract:   A simple "Hello World" compute example showing basic usage of OpenCL which
-//             calculates the mathematical square (X[i] = pow(X[i],2)) for a buffer of
-//             floating point values.
-//
-//
+// Abstract:   Simple searching string in large text files. User can choose whether he wants to execute on GPU or CPU. User can enter file, pattern he is searching and choose desired device for execution.
 // Version:    <1.0>
 //
-// Copyright ( C ) 2008 Apple Inc. All Rights Reserved.
+// Copyright ( C ) 2017 Simon Harvan. All Rights Reserved.
 //
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,7 +25,7 @@
 // Use a static data size for simplicity
 //
 #define MAX_SOURCE_SIZE (0x100000)
-#define MAX_TEXT_SOURCE_SIZE (0x10000000)
+#define MAX_TEXT_SOURCE_SIZE (0x100000000)
 
 
 
@@ -166,10 +162,8 @@ void findString(cl_device_id device_id,
     cl_mem output;                      // device memory used for the output array
     
     
-    unsigned long count = text_source_size;
-    
-    
-    if (count == 0) {
+
+    if (text_source_size == 0) {
         printf("Error: Text file is empty!");
         exit(1);
     }
@@ -181,7 +175,7 @@ void findString(cl_device_id device_id,
         exit(1);
     }
     
-    if (pattern_size > count) {
+    if (pattern_size > text_source_size) {
         printf("Error: Pattern is longer than text in text file!");
         exit(1);
     }
@@ -189,7 +183,7 @@ void findString(cl_device_id device_id,
     
     // Create the input and output arrays in device memory for our calculation
     //
-    input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * count, NULL, NULL);
+    input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * text_source_size, NULL, NULL);
     patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * strlen(pattern), NULL, NULL);
     computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(int) * strlen(pattern), NULL, NULL);
     output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int) * local, NULL, NULL);
@@ -202,7 +196,7 @@ void findString(cl_device_id device_id,
     
     // Write our data set into the input array in device memory
     //
-    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(char) * count, text_source, 0, NULL, NULL);
+    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(char) * text_source_size, text_source, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to write to source array!\n");
@@ -232,7 +226,7 @@ void findString(cl_device_id device_id,
     //
     
     unsigned long resultCount = local;
-    unsigned long partSize = count / resultCount;
+    unsigned long partSize = text_source_size / resultCount;
     
     
     if (partSize < pattern_size) {
@@ -245,7 +239,7 @@ void findString(cl_device_id device_id,
     err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &patternMem);
     err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &computePatternMem);
     err |= clSetKernelArg(kernel, 4, sizeof(unsigned long), &pattern_size);
-    err |= clSetKernelArg(kernel, 5, sizeof(unsigned int), &count);
+    err |= clSetKernelArg(kernel, 5, sizeof(unsigned int), &text_source_size);
     err |= clSetKernelArg(kernel, 6, sizeof(unsigned int), &resultCount);
     if (err != CL_SUCCESS)
     {
@@ -257,6 +251,7 @@ void findString(cl_device_id device_id,
     // Execute the kernel over the entire range of our 1d input data set
     // using the maximum number of work group items for this device
     //
+    
     err = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &local, &local, 0, NULL, NULL);
     if (err)
     {
@@ -272,6 +267,8 @@ void findString(cl_device_id device_id,
     
     // Read back the results from the device to verify the output
     //
+    
+    
     err = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(int) * local, results, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
@@ -306,7 +303,7 @@ int main(int argc, char** argv)
     FILE *textfp;
     char fileName[] = "/Users/simonharvan/Documents/Development/C/aps/aps/main.cl";
     char textFileName[255];
-//  /Users/simonharvan/Documents/Development/C/aps/aps/small.txt
+//  /Users/simonharvan/Documents/Development/C/aps/aps/big.txt
     char pattern[255];
     
     size_t local;                       // local domain size for our calculation
@@ -453,6 +450,7 @@ int main(int argc, char** argv)
     printf("\n-------------\nDuration - %fs\n", time_spent);
     printf("GPU - %d\n", gpu);
     printf("Input size - %luB\n", text_source_size);
+    
     printf("Number of threads - %lu\n-------------\n", local);
     
     
