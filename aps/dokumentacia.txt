@@ -1,0 +1,109 @@
+
+1. Uvod
+Jednoduchy program pouzitelny na rychle vyhladanie retazca vo velkych suboroch.
+
+
+2. Navrh
+Riesenie je navrhnute, tak aby pouzivatel mohol jednoducho menit vytazenie stroja.
+Ak by chcel moze robit vypocet na CPU a GPU.
+
+Cele riesenie som navrhol na OpenCL framework pre písanie programov,
+ktoré sa budú vykonávať na heterogénnych platformách pozostávajúcich z CPU, GPU a iných procesorov.
+Toto riesenie som navrhol, lebo OpenCL je mozne spustit cross-platformovo a bolo
+navrhnute na rozsirenie pouzivania GPU za hranice spracovania obrazu.
+
+Navrhnute riesenie sa odvijalo aj od vyvojoveho prostredia xcode, ktory podporuje
+kompilovanie zdrojoveho kodu pre OpenCL a spustanie binariek.
+
+Pri navrhu sme mysleli aj na moznost hladania alternativnych vyrazov a tak sme
+vyhladavanie navrhli tak aby sa vyhladavali aj varianty s vsetkymi pismenami
+malimy a vsetkymi velkymi.
+
+3. Implementacia
+Implementacia OpenCL ma niekolko zakladnych krokov.
+
+a.  Vybrat zariadenie
+b.  Vytvorit context
+c.  Vytvorit radu prikazov
+d.  Vytvorit objekty pamate
+e.  Citat subor pre kernel
+f.  Vytvorit objekt programu
+g.  Skompilovat
+h.  Vytvorit kernel objekt
+i.  Nastavit vstupne argumenty
+j.  Spustit kernel
+k.  Precitat objekty
+l.  Uvolnit objekty
+
+Implementovanie paralelizacie znamenalo rozdelit vstup (velky subor) na viac
+casti a prehladavat ich osobne.
+V subore main.cl mozeme vidiet riadky:
+
+int threadId = get_global_id(0);
+
+if (((threadId) * partSize) + psize - 1 > inputSize) {
+        output[threadId] = kmp(input + (threadId * partSize), partSize, pattern, pi, psize);
+}else {
+        output[threadId] = kmp(input + (threadId * partSize), partSize + psize - 1, pattern, pi, psize);
+}
+
+kmp je funkcia Knuth-Morris-Pratt algoritmu, ktory vracia prvu poziciu v casti.
+threadId je cislo threadu, ktory danu cast pocita. Na zaklade toho urcujem, ktoru cast suboru mam vytiahnut.
+
+Dalej bolo treba vyriesit prechody medzi castami suboru, aby sa tam nenachadzal hladany
+retazec. Toto sme vyriesili zvacsenim velkosti hladanej casti o velkost patternu - 1.
+Ak sa toto nachadzalo nakonci uz sme dalej nepripocitavali.
+
+4. Zaver
+Program sme testovali. Na GPU fungoval spolahlivo a vyuzival maximalne mnozstvo vlakien.
+Na CPU ma program pri vacsich suboroch problemy so zlym pristupom do pamate, co by som
+rad este vyladil a na com pracujem.
+
+Vytvoril som program, ktory na grafickej karte zvlada vyhladat spolahlivo
+v suboroch do testovanych 110MB.
+
+Na grafickej karte sa preukazal program rychlejsi. Tie iste ukony zvladal za polovicne casy.
+
+
+
+5. Prilohy
+a. Priklad vysledku
+Find match on line 10
+Find match on line 462
+Find match on line 772
+Find match on line 1091
+Find match on line 1554
+Find match on line 2486
+Find match on line 4263
+Find match on line 4873
+Find match on line 4929
+-------------
+Number of matches: 9
+-------------
+Duration - 0.033343s
+GPU - 1
+Input size - 530302B
+Number of threads - 256
+-------------
+
+b. Pouzivatelska prirucka
+Program obsahuje jednoduche pouzivatelske prostredie, ktore si od pouzivatela vypita
+cestu k prehladavanemu suboru.
+---------------
+Hello, this is program for searching in text files
+---------------
+Load file:
+/Users/simonharvan/Documents/Development/C/aps/aps/text.txt
+
+Nasledne si od pouzivatela vypita vstupny retazec
+Pattern you want to find:
+Please
+
+Nakoniec da pouzivatelovy volbu vypoctovej jednotky.
+Compute on:
+0 - CPU
+1 - GPU
+
+c. Poznamky
+i. Projekt je v gite a je v nom dalsia brancha, ktore nie je dorobena. Funkcna verzia je v Mastrovi.
+ii. Ak chcete skompilovat projekt musite si nastavit cestu k suboru main.cl na riadku priblizne 305.

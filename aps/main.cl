@@ -7,7 +7,7 @@
 // Simple compute kernel which computes the square of an input array
 //
 
-
+// KNUTH–MORRIS–PRATT
 __global int kmp(__global char *target, int tsize, __global char* pattern, __global int *pi, unsigned long psize)
 {
     int i;
@@ -31,14 +31,13 @@ __kernel void run(__global char* input, __global int* output, __global char* pat
     
     int threadId = get_global_id(0);
     int partSize = inputSize / resultCount;
-    printf("");
     if (partSize < psize) {
         partSize = psize;
     }
     
     
     
-    // KNUTH–MORRIS–PRATT
+    
     if (threadId * partSize >= inputSize) {
         return;
     }

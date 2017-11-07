@@ -251,8 +251,10 @@ void findString(cl_device_id device_id,
     // Execute the kernel over the entire range of our 1d input data set
     // using the maximum number of work group items for this device
     //
-    
-    err = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &local, &local, 0, NULL, NULL);
+    size_t global = text_source_size + pattern_size;
+    unsigned long temp = global / local;
+    global = local * temp;
+    err = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &global, &local, 0, NULL, NULL);
     if (err)
     {
         printf("Error: Failed to execute kernel!\n");
@@ -303,7 +305,7 @@ int main(int argc, char** argv)
     FILE *textfp;
     char fileName[] = "/Users/simonharvan/Documents/Development/C/aps/aps/main.cl";
     char textFileName[255];
-//  /Users/simonharvan/Documents/Development/C/aps/aps/big.txt
+
     char pattern[255];
     
     size_t local;                       // local domain size for our calculation
@@ -450,7 +452,6 @@ int main(int argc, char** argv)
     printf("\n-------------\nDuration - %fs\n", time_spent);
     printf("GPU - %d\n", gpu);
     printf("Input size - %luB\n", text_source_size);
-    
     printf("Number of threads - %lu\n-------------\n", local);
     
     
@@ -465,4 +466,4 @@ int main(int argc, char** argv)
     return 0;
 }
 
-
+///Users/simonharvan/Documents/Development/C/aps/aps/text.txt
