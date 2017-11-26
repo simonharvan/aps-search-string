@@ -8,16 +8,17 @@
 //
 
 // KNUTH–MORRIS–PRATT
-__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, volatile __global int* counter)
+__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, int counter)
 {
     
     
     int i;
     int k = -1;
     if (!pi){
-        output[*counter] =  0;
         return;
     }
+    int index = counter;
+    
     
     for (i = 0; i < tsize; i++) {
         while (k > -1 && pattern[k+1] != target[i])
@@ -25,16 +26,15 @@ __kernel void kmp(__global char *target, unsigned long tsize, __global char* pat
         if (target[i] == pattern[k+1])
             k++;
         if (k == psize - 1) {
-            output[*counter] = i - k - 1;
-            printf("%d at position %d\n", i - k - 1, *counter);
-            atomic_inc(counter);
+            output[counter] = index + i - k - 1 ;
+            counter++;
             k = -1;
         }
     }
     return;
 }
 
-__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize, size_t numOfThreads, __global int *counterArg)
+__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize, size_t numOfThreads)
 {
     
     int threadId = get_global_id(0);
@@ -43,7 +43,7 @@ __kernel void run(__global char* input, __global unsigned long* output, __global
         partSize = psize;
     }
 
-    volatile __global int *counter = counterArg;
+
 
     if (threadId * partSize >= inputSize) {
         return;
@@ -52,8 +52,8 @@ __kernel void run(__global char* input, __global unsigned long* output, __global
     int index = threadId * partSize;
     
     if (index + psize - 1 > inputSize) {
-        kmp(input + (index), partSize, pattern, pi, psize, output, counter);
+        kmp(input + (index), partSize, pattern, pi, psize, output, index);
     }else {
-        kmp(input + (index), partSize + psize - 1, pattern, pi, psize, output, counter);
+        kmp(input + (index), partSize + psize - 1, pattern, pi, psize, output, index);
     }
 }

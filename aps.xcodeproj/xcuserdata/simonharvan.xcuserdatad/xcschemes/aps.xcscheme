@@ -73,7 +73,11 @@
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "-f /Users/simonharvan/Documents/Development/C/aps/aps/big.txt"
+            argument = "-l"
+            isEnabled = "YES">
+         </CommandLineArgument>
+         <CommandLineArgument
+            argument = "-f /Users/simonharvan/Documents/Development/C/aps/aps/med.txt"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

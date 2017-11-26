@@ -163,7 +163,6 @@ void findStringCPU(char* text_source,
     int *pi = compute_prefix_function(pattern, pattern_size);
     
     if (!pi){
-        results[counter] =  0;
         return;
     }
     
@@ -178,8 +177,7 @@ void findStringCPU(char* text_source,
             k = -1;
         }
     }
-    results[counter] =  0;
-    counter++;
+
     return;
     
 
@@ -237,19 +235,36 @@ void findStringGPU(cl_device_id device_id,
     
     // Create the input and output arrays in device memory for our calculation
     //
-    
-    cl_mem counterMem;
-    input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * text_source_size, NULL, NULL);
-    patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * strlen(pattern), NULL, NULL);
-    computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(int) * strlen(pattern), NULL, NULL);
-    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(unsigned long) * resultSize, NULL, NULL);
-    counterMem = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(int), NULL, NULL);
-    
-    if (!input || !output || !computePatternMem || ! patternMem || !counterMem)
+    int error = 0;
+
+    input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * text_source_size, NULL, &error);
+    if (error)
     {
-        printf("Error: Failed to allocate device memory!\n");
+        printf("Error: Failed to allocate device memory with code %d!\n", error);
         exit(1);
     }
+    
+    patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * pattern_size, NULL, &error);
+    if (error)
+    {
+        printf("Error: Failed to allocate device memory with code %d!\n", error);
+        exit(1);
+    }
+    
+    computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(int) * pattern_size, NULL, &error);
+    if (error)
+    {
+        printf("Error: Failed to allocate device memory with code %d!\n", error);
+        exit(1);
+    }
+    
+    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(unsigned long) * resultSize, results, &error);
+    if (error)
+    {
+        printf("Error: Failed to allocate device memory with code %d!\n", error);
+        exit(1);
+    }
+    
     
     // Write our data set into the input array in device memory
     //
@@ -275,15 +290,8 @@ void findStringGPU(cl_device_id device_id,
         printf("Error: Failed to write to source pattern!\n");
         exit(1);
     }
-    
-    int counter = 0;
-    err = clEnqueueWriteBuffer(commands, counterMem, CL_TRUE, 0, sizeof(int), &counter, 0, NULL, NULL);
-    
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: Failed to write to source pattern!\n");
-        exit(1);
-    }
+
+    results = clEnqueueMapBuffer(commands, output, CL_TRUE, CL_MAP_WRITE, 0, resultSize, 0, NULL, NULL, NULL);
     
     
     // Set the arguments to our compute kernel
@@ -302,8 +310,6 @@ void findStringGPU(cl_device_id device_id,
     err |= clSetKernelArg(kernel, 4, sizeof(unsigned long), &pattern_size);
     err |= clSetKernelArg(kernel, 5, sizeof(unsigned long), &text_source_size);
     err |= clSetKernelArg(kernel, 6, sizeof(size_t), &numOfThreads);
-    err |= clSetKernelArg(kernel, 7, sizeof(cl_mem), &counterMem);
-    
     
     if (err != CL_SUCCESS)
     {
@@ -331,7 +337,7 @@ void findStringGPU(cl_device_id device_id,
     
     // Read back the results from the device to verify the output
     //
-    err = clEnqueueReadBuffer(commands, output, CL_TRUE, 0, sizeof(unsigned long) * resultSize, results, 0, NULL, NULL);
+    err = clEnqueueUnmapMemObject(commands, output, results, 0, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         printf("Error: Failed to read output array! %d\n", err);
@@ -404,13 +410,13 @@ int main(int argc, char** argv)
             fileLoaded = 1;
             continue;
         }else if (!strcmp(argv[i], "-h")) {
-            printf("apsgrep [-logc] [-p pattern] [-f file]\nNAME\napsgrep \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.");
+            printf("apsgrep [-logch] [-p pattern] [-f file]\n");
             return EXIT_SUCCESS;
         }else if (!strcmp(argv[i], "-c")) {
             cpuOption = 1;
             i++;
             continue;
-        }else if (!strcmp(argv[i], "-c")){
+        }else if (!strcmp(argv[i], "-g")){
             cpuOption = 0;
             i++;
             continue;
@@ -423,8 +429,8 @@ int main(int argc, char** argv)
             i++;
             continue;
         }else {
-            printf("wrong argument %s", argv[i]);
-            printf("apsgrep [-clo] [-p pattern] [-f file]\nNAME\napsgrep \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.");
+            printf("wrong argument %s\n", argv[i]);
+            printf("apsgrep [-clo] [-p pattern] [-f file]\nNAME\napsgrep \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.\n");
             return EXIT_FAILURE;
         }
     }
@@ -480,7 +486,7 @@ int main(int argc, char** argv)
     
     unsigned long psize = strlen(pattern);
    
-    unsigned long resultSize = text_source_size / psize;
+    unsigned long resultSize = text_source_size;
     
     unsigned long *results = malloc(sizeof(unsigned long) * resultSize);
     memset(results, 0, sizeof(unsigned long) * resultSize);
@@ -527,6 +533,23 @@ int main(int argc, char** argv)
             printf("Error: Failed to retrieve device info! %d\n", err);
             exit(1);
         }
+        
+        
+        cl_ulong maxMemAlloc;
+        err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(maxMemAlloc), &maxMemAlloc, NULL);
+        if (err != CL_SUCCESS)
+        {
+            printf("Error: Failed to retrieve device info! %d\n", err);
+            exit(1);
+        }
+        
+        //If device cannot hold big enough array program ends
+        //
+        if (maxMemAlloc < text_source_size) {
+            printf("Error: Too big file");
+            exit(EXIT_FAILURE);
+        }
+        
         
         // Create a command commands
         //

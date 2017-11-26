@@ -14,11 +14,6 @@ navrhnute na rozsirenie pouzivania GPU za hranice spracovania obrazu.
 
 Navrhnute riesenie sa odvijalo aj od vyvojoveho prostredia xcode, ktory podporuje
 kompilovanie zdrojoveho kodu pre OpenCL a spustanie binariek.
-
-Pri navrhu sme mysleli aj na moznost hladania alternativnych vyrazov a tak sme
-vyhladavanie navrhli tak aby sa vyhladavali aj varianty s vsetkymi pismenami
-malimy a vsetkymi velkymi.
-
 3. Implementacia
 Implementacia OpenCL ma niekolko zakladnych krokov.
 
@@ -41,10 +36,10 @@ V subore main.cl mozeme vidiet riadky:
 
 int threadId = get_global_id(0);
 
-if (((threadId) * partSize) + psize - 1 > inputSize) {
-        output[threadId] = kmp(input + (threadId * partSize), partSize, pattern, pi, psize);
+if (index + psize - 1 > inputSize) {
+    kmp(input + (index), partSize, pattern, pi, psize, output, index);
 }else {
-        output[threadId] = kmp(input + (threadId * partSize), partSize + psize - 1, pattern, pi, psize);
+    kmp(input + (index), partSize + psize - 1, pattern, pi, psize, output, index);
 }
 
 kmp je funkcia Knuth-Morris-Pratt algoritmu, ktory vracia prvu poziciu v casti.
@@ -53,57 +48,65 @@ threadId je cislo threadu, ktory danu cast pocita. Na zaklade toho urcujem, ktor
 Dalej bolo treba vyriesit prechody medzi castami suboru, aby sa tam nenachadzal hladany
 retazec. Toto sme vyriesili zvacsenim velkosti hladanej casti o velkost patternu - 1.
 Ak sa toto nachadzalo nakonci uz sme dalej nepripocitavali.
+4. Testovanie
+Testovanie prebiehalo na stroji MacBook Pro s CPU 2,7 GHz Intel Core i5 a GPU Intel Iris Graphics 6100 1536 MB.
+Zavery z testovania su zhrnute v grafe v prilohe (graf.png).
 
-4. Zaver
-Program sme testovali. Na GPU fungoval spolahlivo a vyuzival maximalne mnozstvo vlakien.
-Na CPU ma program pri vacsich suboroch problemy so zlym pristupom do pamate, co by som
-rad este vyladil a na com pracujem.
+Velkost suboru[B]	CPU[s]	  GPU[s]
+930	              0,000170	0,014483
+13964	            0,000184	0,014452
+530293	          0,004358	0,017427
+1060586	          0,008802	0,020915
+3181758	          0,026018	0,031849
+6363624	          0,048450	0,045881
+25454497	        0,184127	0,144689
+50908994	        0,376917	0,282787
+76363491	        0,630186	0,381808
+103814336	        0,850106	0,531693
+
+Testovanie prebiehalo tiez pomocou programu time. Vysledky najdete v grafe v prilohe (graf2.png).
+Vsetky programy vypisovali iba pocet vyskytov v subore.
+Velkost suboru[B]	CPU[s]	GPU[s]	GREP[s]
+930	              0,021	  0,035	  0,011
+13964	            0,019	  0,037	  0,012
+530293	          0,026	  0,052	  0,01
+1060586	          0,031	  0,072	  0,021
+3181758	          0,058	  0,125	  0,032
+6363624	          0,094	  0,128	  0,064
+25454497	        0,282	  0,675	  0,205
+50908994	        0,532	  1,318	  0,389
+76363491	        0,802	  1,952	  0,57
+103814336	        1,116	  1,367	  0,993
+152726982         1,813	  1,293	  1,037
+
+
+5. Zaver
+Program sme testovali. Na GPU fungoval spolahlivo, jeho navratove hodnoty sme porovnavali s vysledkami grep-u.
 
 Vytvoril som program, ktory na grafickej karte zvlada vyhladat spolahlivo
-v suboroch do testovanych 110MB.
+v suboroch do testovanych 200MB.
 
-Na grafickej karte sa preukazal program rychlejsi. Tie iste ukony zvladal za polovicne casy.
+Z testovania je ale jasne, ze este nedosiahol rychlost, ktoru ma grep.
+Je vsak aj vidno, ze drzi s nim tempo, ak by sme dokazali vylepsit vypisy,
+ktore aktualne trvaju O(n), tak by sme sa pravdepodobne dostali pod hranicu grep-u.
 
+6. Obmedzenia
+Program zvladne subory, len do velkosti, ktoru dovoli OpenCL alokovat.
+Na GPU ma problem s paralelizaciou, ak je pattern kratky (mensi ako 4 znaky).
 
+7. Prilohy
+a. Pouzivatelska prirucka
+Program ma k dispozicii 7 prepinacov:
+-p - nasleduje vzor, ktory chceme vyhladat, bud v apostrofoch alebo samotny, ak ide o jedno slovo.
+-f - subor v ktorom chceme vyhladat
+-h - vypise vsetky mozne prepinace
+-c - cpu vypocet
+-g - gpu vypocet (default)
+-l - vypis vo forme 'nachadza sa na riadku xx'
+-o - vypis vo forme 'nachadza sa s offsetom xx'
 
-5. Prilohy
-a. Priklad vysledku
-Find match on line 10
-Find match on line 462
-Find match on line 772
-Find match on line 1091
-Find match on line 1554
-Find match on line 2486
-Find match on line 4263
-Find match on line 4873
-Find match on line 4929
--------------
-Number of matches: 9
--------------
-Duration - 0.033343s
-GPU - 1
-Input size - 530302B
-Number of threads - 256
--------------
+Nasledne vypise, kolko vypisov sa naslo, pripadne pozadovany vypis.
 
-b. Pouzivatelska prirucka
-Program obsahuje jednoduche pouzivatelske prostredie, ktore si od pouzivatela vypita
-cestu k prehladavanemu suboru.
----------------
-Hello, this is program for searching in text files
----------------
-Load file:
-/Users/simonharvan/Documents/Development/C/aps/aps/text.txt
-
-Nasledne si od pouzivatela vypita vstupny retazec
-Pattern you want to find:
-Please
-
-Nakoniec da pouzivatelovy volbu vypoctovej jednotky.
-Compute on:
-0 - CPU
-1 - GPU
-
-c. Poznamky
-i. Projekt je v gite a je v nom dalsia brancha, ktore nie je dorobena. Funkcna verzia je v Mastrovi.
-ii. Ak chcete skompilovat projekt musite si nastavit cestu k suboru main.cl na riadku priblizne 305.
+b. Poznamky
+i. Projekt je v gite. Funkcna verzia je v Mastrovi.
+ii. POZOR! Ak chcete skompilovat projekt musite si nastavit cestu k suboru main.cl na riadku priblizne 370.
