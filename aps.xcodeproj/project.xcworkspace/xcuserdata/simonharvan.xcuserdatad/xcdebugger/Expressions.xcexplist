@@ -3,46 +3,21 @@
    version = "1.0">
    <ContextStates>
       <ContextState
-         contextName = "GLOBAL">
-         <PersistentStrings>
-            <PersistentString
-               value = "pi[2]">
-            </PersistentString>
-         </PersistentStrings>
+         contextName = "main:main.c">
       </ContextState>
       <ContextState
-         contextName = "main:main.c">
+         contextName = "findStringGPU:main.c">
+         <PersistentStrings>
+            <PersistentString
+               value = "( local + 1 ) * partSize">
+            </PersistentString>
+         </PersistentStrings>
       </ContextState>
       <ContextState
          contextName = "printResult:main.c">
          <PersistentStrings>
             <PersistentString
-               value = "newLines[7]">
-            </PersistentString>
-         </PersistentStrings>
-      </ContextState>
-      <ContextState
-         contextName = "findWhatLine:main.c">
-         <PersistentStrings>
-            <PersistentString
-               value = "*(newLines + i) &lt; charNum &amp;&amp; charNum &lt; *(newLines + i + 1))">
-            </PersistentString>
-            <PersistentString
-               value = "*(newLines + i + 1)">
-            </PersistentString>
-            <PersistentString
-               value = "*(newLines + max - 1)">
-            </PersistentString>
-            <PersistentString
-               value = "*(newLines + i)">
-            </PersistentString>
-         </PersistentStrings>
-      </ContextState>
-      <ContextState
-         contextName = "compute_prefix_function:main.c">
-         <PersistentStrings>
-            <PersistentString
-               value = "pi[3]">
+               value = "result[i]">
             </PersistentString>
          </PersistentStrings>
       </ContextState>
