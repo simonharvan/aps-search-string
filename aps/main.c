@@ -79,6 +79,8 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
             if (result[i] != 0){
                 numberOfFinds++;
                 printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1));
+            }else {
+                i = (i / partSize + 1) * partSize - 1;
             }
         }
     } else if(offsetOption) {
