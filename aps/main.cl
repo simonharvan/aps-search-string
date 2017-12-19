@@ -8,16 +8,16 @@
 //
 
 // KNUTH–MORRIS–PRATT
-__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, int counter)
+__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, unsigned long counter)
 {
     
     
-    int i;
+    unsigned long i;
     int k = -1;
     if (!pi){
         return;
     }
-    int index = counter;
+    unsigned long index = counter;
     
     
     for (i = 0; i < tsize; i++) {
@@ -29,6 +29,7 @@ __kernel void kmp(__global char *target, unsigned long tsize, __global char* pat
             output[counter] = index + i - k - 1 ;
             counter++;
             k = -1;
+            
         }
     }
     return;
@@ -36,20 +37,17 @@ __kernel void kmp(__global char *target, unsigned long tsize, __global char* pat
 
 __kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize, size_t numOfThreads)
 {
-    
     int threadId = get_global_id(0);
     unsigned long partSize = inputSize / numOfThreads;
     if (partSize < psize) {
         partSize = psize;
     }
 
-
-
     if (threadId * partSize >= inputSize) {
         return;
     }
 
-    int index = threadId * partSize;
+    unsigned long index = threadId * partSize;
     
     if (index + psize - 1 > inputSize) {
         kmp(input + (index), partSize, pattern, pi, psize, output, index);

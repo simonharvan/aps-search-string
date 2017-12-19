@@ -61,84 +61,41 @@ unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charN
     return max;
 }
 
-void printAdvResult(char* text_source, unsigned long text_source_size, int *result,int *resultUpper, int *resultLower,  size_t local, unsigned long psize) {
-    int numberOfFinds = 0;
-    unsigned long *newLines = (unsigned long*)malloc(text_source_size * sizeof(unsigned long));
-    
-    int counter = 2;
-    for(int j = 0; j < text_source_size; j++) {
-        if (text_source[j] == '\n') {
-            newLines[counter] = j;
-            counter++;
-        }
-    }
-    
-    unsigned long partSize = text_source_size / local;
-    if (partSize < psize) {
-        partSize = psize;
-    }
-    for (int i = 0; i < (local + 1) * partSize; i++) {
-        if (result[i] != 0){
-            numberOfFinds++;
-            
-            int whatPartIn = i / partSize;
-            printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + (whatPartIn * partSize) + 1));
-        }
-    }
-    for (int i = 0; i < (local + 1) * partSize; i++) {
-        if (resultUpper[i] != 0){
-            numberOfFinds++;
-          
-            int whatPartIn = i / partSize;
-            printf("Find match on line %lu\n", findWhatLine(newLines, counter, resultUpper[i] + (whatPartIn * partSize) + 1));
-        }
-    }
-
-    for (int i = 0; i < (local + 1) * partSize; i++) {
-        if (resultLower[i] != 0){
-            numberOfFinds++;
-            int whatPartIn = i / partSize;
-            printf("Find match on line %lu\n", findWhatLine(newLines, counter, resultLower[i] + (whatPartIn * partSize) + 1));
-        }
-    }
-    
-    if (numberOfFinds > 0) {
-        printf("\n-------------\nNumber of matches: %d\n", numberOfFinds);
-    }else {
-        printf("No match in file\n");
-    }
-}
-
-void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize, int linesOption, int offsetOption) {
+void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize,
+                 unsigned long partSize, int linesOption, int offsetOption) {
 
     int numberOfFinds = 0;
     if (linesOption){
         unsigned long *newLines = (unsigned long*)malloc(text_source_size * sizeof(unsigned long));
 
         int counter = 2;
-        for(int j = 0; j < text_source_size; j++) {
+        for(unsigned long j = 0; j < text_source_size; j++) {
             if (text_source[j] == '\n') {
                 newLines[counter] = j;
                 counter++;
             }
         }
-        for (int i = 0; i < resultSize; i++) {
+        for (unsigned long i = 0; i < resultSize; i++) {
             if (result[i] != 0){
                 numberOfFinds++;
                 printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1));
             }
         }
     } else if(offsetOption) {
-        for (int i = 0; i < resultSize; i++) {
+        for (unsigned long i = 0; i < resultSize; i++) {
             if (result[i] != 0){
                 numberOfFinds++;
                 printf("Find match with offset %lu\n", result[i] + 1);
+            }else {
+                i = (i / partSize + 1) * partSize - 1;
             }
         }
     } else {
-        for (int i = 0; i < resultSize; i++) {
+        for (unsigned long i = 0; i < resultSize; i++) {
             if (result[i] != 0){
                 numberOfFinds++;
+            }else {
+                i = (i / partSize + 1) * partSize - 1;
             }
         }
     }
@@ -258,7 +215,7 @@ void findStringGPU(cl_device_id device_id,
         exit(1);
     }
     
-    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(unsigned long) * resultSize, results, &error);
+    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, resultSize, results, &error);
     if (error)
     {
         printf("Error: Failed to allocate device memory with code %d!\n", error);
@@ -291,7 +248,7 @@ void findStringGPU(cl_device_id device_id,
         exit(1);
     }
 
-    results = clEnqueueMapBuffer(commands, output, CL_TRUE, CL_MAP_WRITE, 0, resultSize, 0, NULL, NULL, NULL);
+    results = clEnqueueMapBuffer(commands, output, CL_TRUE, CL_MAP_WRITE, 0, resultSize * sizeof(unsigned long), 0, NULL, NULL, NULL);
     
     
     // Set the arguments to our compute kernel
@@ -491,11 +448,12 @@ int main(int argc, char** argv)
     unsigned long *results = malloc(sizeof(unsigned long) * resultSize);
     memset(results, 0, sizeof(unsigned long) * resultSize);
     
-    
+    unsigned long partSize;
     
     //Original
     if (cpuOption) {
         findStringCPU(textmemblock, text_source_size, pattern, results);
+        partSize = text_source_size;
     } else {
         
         // Connect to a compute device
@@ -600,7 +558,7 @@ int main(int argc, char** argv)
             printf("Error: Failed to retrieve kernel work group info! %d\n", err);
             exit(1);
         }
-        unsigned long partSize = text_source_size / local;
+        partSize = text_source_size / local;
         if (partSize < psize) {
             partSize = psize;
         }
@@ -618,7 +576,7 @@ int main(int argc, char** argv)
     clock_t end = clock();
     
     
-    printResult(textmemblock, text_source_size, results, resultSize, local, psize, linesOption, offsetOption);
+    printResult(textmemblock, text_source_size, results, resultSize, local, psize, partSize, linesOption, offsetOption);
     
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
     printf("\n-------------\nDuration - %fs\n", time_spent);
