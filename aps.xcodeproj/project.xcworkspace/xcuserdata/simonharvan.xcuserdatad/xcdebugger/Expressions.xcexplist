@@ -11,6 +11,9 @@
             <PersistentString
                value = "( local + 1 ) * partSize">
             </PersistentString>
+            <PersistentString
+               value = "results">
+            </PersistentString>
          </PersistentStrings>
       </ContextState>
       <ContextState

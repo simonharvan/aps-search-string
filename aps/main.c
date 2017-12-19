@@ -61,8 +61,7 @@ unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charN
     return max;
 }
 
-void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize,
-                 unsigned long partSize, int linesOption, int offsetOption) {
+void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize, unsigned long partSize, int linesOption, int offsetOption) {
 
     int numberOfFinds = 0;
     if (linesOption){
@@ -79,7 +78,7 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
             if (result[i] != 0){
                 numberOfFinds++;
                 printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1));
-            }else {
+            } else {
                 i = (i / partSize + 1) * partSize - 1;
             }
         }
@@ -217,7 +216,7 @@ void findStringGPU(cl_device_id device_id,
         exit(1);
     }
     
-    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, resultSize, results, &error);
+    output = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, resultSize * sizeof(long), results, &error);
     if (error)
     {
         printf("Error: Failed to allocate device memory with code %d!\n", error);

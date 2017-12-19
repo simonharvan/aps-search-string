@@ -74,10 +74,10 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "-l"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "-f /Users/simonharvan/Documents/Development/C/aps/aps/med.txt"
+            argument = "-f /Users/simonharvan/Documents/Development/C/aps/aps/med125.txt"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

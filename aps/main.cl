@@ -26,7 +26,7 @@ __kernel void kmp(__global char *target, unsigned long tsize, __global char* pat
         if (target[i] == pattern[k+1])
             k++;
         if (k == psize - 1) {
-            output[counter] = index + i - k - 1 ;
+            output[counter] = index + i - k - 1;
             counter++;
             k = -1;
             
