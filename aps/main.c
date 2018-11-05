@@ -105,7 +105,7 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
     
     
     if (numberOfFinds > 0) {
-        printf("\n-------------\nNumber of matches: %d\n", numberOfFinds);
+        printf("\nNumber of matches: %d\n", numberOfFinds);
     }else {
         printf("No match in file\n");
     }
@@ -324,7 +324,7 @@ int main(int argc, char** argv)
     
     FILE *fp;
     char *textmemblock;
-    char fileName[] = "/Users/simonharvan/Documents/Development/C/aps/aps/main.cl";
+    char fileName[] = "/Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/main.cl";
     char textFileName[255];
     
     int fd;
@@ -353,7 +353,7 @@ int main(int argc, char** argv)
     int offsetOption = 0;
     int fileLoaded = 0;
     int patternLoaded = 0;
-    
+    int debugOption = 0;
     int i = 1;
     
     while (i < argc) {
@@ -386,12 +386,17 @@ int main(int argc, char** argv)
             offsetOption = 1;
             i++;
             continue;
+        }else if (!strcmp(argv[i], "-d")){
+            debugOption = 1;
+            i++;
+            continue;
         }else {
             printf("wrong argument %s\n", argv[i]);
             printf("apsgrep [-clo] [-p pattern] [-f file]\nNAME\napsgrep \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.\n");
             return EXIT_FAILURE;
         }
     }
+    
     if (!fileLoaded) {
         printf("no file defined!\n");
         return EXIT_FAILURE;
@@ -412,9 +417,7 @@ int main(int argc, char** argv)
     }
     printf("Proccessing ...\n");
     
-    //Start time
-    clock_t begin = clock();
-    
+
     
     
     /* Load text file */
@@ -446,9 +449,8 @@ int main(int argc, char** argv)
    
     unsigned long resultSize = text_source_size;
     
-    unsigned long *results = malloc(sizeof(unsigned long) * resultSize);
-    memset(results, 0, sizeof(unsigned long) * resultSize);
-    
+    unsigned long *results = calloc(resultSize, sizeof(unsigned long));
+
     unsigned long partSize;
     
     //Original
@@ -459,6 +461,7 @@ int main(int argc, char** argv)
         
         // Connect to a compute device
         //
+        
         err = clGetDeviceIDs(NULL, cpuOption ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
         if (err != CL_SUCCESS)
         {
@@ -521,6 +524,7 @@ int main(int argc, char** argv)
         
         // Create the compute program from the source buffer
         //
+        
         program = clCreateProgramWithSource(context, 1, (const char **) & source_str, NULL, &err);
         if (!program)
         {
@@ -541,6 +545,7 @@ int main(int argc, char** argv)
             printf("%s\n", buffer);
             exit(1);
         }
+        
         
         // Create the compute kernel in the program we wish to run
         kernel = clCreateKernel(program, "run", &err);
@@ -563,6 +568,7 @@ int main(int argc, char** argv)
         if (partSize < psize) {
             partSize = psize;
         }
+    
         findStringGPU(device_id, context, commands, program, kernel, local, globalSize, maxWorkGroupSize, textmemblock, text_source_size, pattern, results, resultSize);
         
         clReleaseProgram(program);
@@ -571,20 +577,15 @@ int main(int argc, char** argv)
         clReleaseContext(context);
     }
     
-    
 
-    //End time
-    clock_t end = clock();
-    
-    
     printResult(textmemblock, text_source_size, results, resultSize, local, psize, partSize, linesOption, offsetOption);
-    
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("\n-------------\nDuration - %fs\n", time_spent);
-    printf("%s - true\n", cpuOption ? "CPU" : "GPU");
-    printf("Input size - %luB\n", text_source_size);
-    printf("Number of threads - %lu\n-------------\n", cpuOption ? 1 : local);
-    
+
+    if (debugOption) {
+        printf("\n-------------\n");
+        printf("%s - true\n", cpuOption ? "CPU" : "GPU");
+        printf("Input size - %luB\n", text_source_size);
+        printf("Number of threads - %lu\n-------------\n", cpuOption ? 1 : local);
+    }
     
     
     // Shutdown and cleanup
