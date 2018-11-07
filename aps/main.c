@@ -52,21 +52,49 @@ int *compute_prefix_function(char *pattern, unsigned long psize)
     return pi;
 }
 
-unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charNum) {
+unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charNum, unsigned long *bonds) {
     for (int i = 1; i < max-1; i++) {
-        if (*(newLines + i) < charNum && charNum < *(newLines + i + 1)){
+        if (*(newLines + i) <= charNum && charNum < *(newLines + i + 1)){
+            bonds[0] = *(newLines + i);
+            bonds[1] = *(newLines + i + 1);
             return i;
         }
     }
-    return max;
+    bonds[0] = *(newLines + max - 1);
+    bonds[1] = *(newLines + max);
+    return max - 1;
+}
+
+char *substring(char *string, unsigned long position, unsigned long length)
+{
+    char *pointer;
+    int c;
+    
+    pointer = (char*) malloc(length+1 * sizeof(char));
+    
+    if (pointer == NULL)
+    {
+        printf("Unable to allocate memory.\n");
+        exit(1);
+    }
+    
+    for (c = 0 ; c < length ; c++)
+    {
+        *(pointer+c) = *(string+position-1);
+        string++;
+    }
+    
+    *(pointer+c) = '\0';
+    
+    return pointer;
 }
 
 void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize, unsigned long partSize, int linesOption, int offsetOption) {
-
+    bool firsPart = true;
     int numberOfFinds = 0;
     if (linesOption){
         unsigned long *newLines = (unsigned long*)malloc(text_source_size * sizeof(unsigned long));
-
+        newLines[1] = 0;
         int counter = 2;
         for(unsigned long j = 0; j < text_source_size; j++) {
             if (text_source[j] == '\n') {
@@ -74,30 +102,43 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
                 counter++;
             }
         }
+        newLines[counter] = text_source_size;
+        unsigned long lineNumber;
+        unsigned long lastLineNumber = 0;
+        unsigned long *lineBonds = (unsigned long*) malloc(2 * sizeof(unsigned long));
         for (unsigned long i = 0; i < resultSize; i++) {
-            if (result[i] != 0){
-                numberOfFinds++;
-                printf("Find match on line %lu\n", findWhatLine(newLines, counter, result[i] + 1));
-            } else {
+            if (result[i] == -1 || (result[i] == 0 && !firsPart)){
                 i = (i / partSize + 1) * partSize - 1;
+                firsPart = false;
+                continue;
             }
+            numberOfFinds++;
+            lineNumber = findWhatLine(newLines, counter, result[i], lineBonds);
+            if (lineNumber > lastLineNumber){
+                printf("Find match on line %lu\n", lineNumber);
+                printf("%s\n", substring(text_source, lineBonds[0] + 1, lineBonds[1] - lineBonds[0]));
+            }
+            lastLineNumber = lineNumber;
+            
         }
     } else if(offsetOption) {
         for (unsigned long i = 0; i < resultSize; i++) {
-            if (result[i] != 0){
-                numberOfFinds++;
-                printf("Find match with offset %lu\n", result[i] + 1);
-            }else {
+            if (result[i] == -1 || (result[i] == 0 && !firsPart)){
                 i = (i / partSize + 1) * partSize - 1;
+                firsPart = false;
+                continue;
             }
+            numberOfFinds++;
+            printf("Find match with offset %lu\n", result[i] + 1);
         }
     } else {
         for (unsigned long i = 0; i < resultSize; i++) {
-            if (result[i] != 0){
-                numberOfFinds++;
-            }else {
+            if (result[i] == -1 || (result[i] == 0 && !firsPart)){
                 i = (i / partSize + 1) * partSize - 1;
+                firsPart = false;
+                continue;
             }
+            numberOfFinds++;
         }
     }
     
@@ -110,6 +151,7 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
         printf("No match in file\n");
     }
 }
+
 void findStringCPU(char* text_source,
                    unsigned long text_source_size,
                    char* pattern,
@@ -130,18 +172,19 @@ void findStringCPU(char* text_source,
         if (text_source[i] == pattern[k+1])
             k++;
         if (k == pattern_size - 1) {
-            results[counter] = i - k - 1;
+            results[counter] = i - k;
             counter++;
             k = -1;
         }
     }
+    results[counter] = -1;
 
     return;
     
 
 }
 
-void findStringGPU(cl_device_id device_id,
+size_t findStringGPU(cl_device_id device_id,
                 cl_context context,
                 cl_command_queue commands,
                 cl_program program,
@@ -153,7 +196,8 @@ void findStringGPU(cl_device_id device_id,
                 unsigned long text_source_size,
                 char* pattern,
                 unsigned long results[],
-                unsigned long resultSize) {
+                unsigned long resultSize,
+                unsigned long *partSize) {
    
     int err;                            // error code returned from api calls
     
@@ -184,32 +228,30 @@ void findStringGPU(cl_device_id device_id,
     }
     
     
-    unsigned long partSize = text_source_size / local;
     
     
-    if (partSize < pattern_size) {
-        partSize = pattern_size;
-    }
+    
+   
     
     // Create the input and output arrays in device memory for our calculation
     //
     int error = 0;
-
-    input = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * text_source_size, NULL, &error);
+    
+    input = clCreateBuffer(context,  CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,  sizeof(char) * text_source_size, text_source, &error);
     if (error)
     {
         printf("Error: Failed to allocate device memory with code %d!\n", error);
         exit(1);
     }
     
-    patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(char) * pattern_size, NULL, &error);
+    patternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,  sizeof(char) * pattern_size, pattern, &error);
     if (error)
     {
         printf("Error: Failed to allocate device memory with code %d!\n", error);
         exit(1);
     }
-    
-    computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY,  sizeof(int) * pattern_size, NULL, &error);
+    int *pi = compute_prefix_function(pattern, pattern_size);
+    computePatternMem = clCreateBuffer(context,  CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,  sizeof(int) * pattern_size, pi, &error);
     if (error)
     {
         printf("Error: Failed to allocate device memory with code %d!\n", error);
@@ -223,42 +265,11 @@ void findStringGPU(cl_device_id device_id,
         exit(1);
     }
     
-    
-    // Write our data set into the input array in device memory
-    //
-    err = clEnqueueWriteBuffer(commands, input, CL_TRUE, 0, sizeof(char) * text_source_size, text_source, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: Failed to write to source array!\n");
-        exit(1);
-    }
-    
-    err = clEnqueueWriteBuffer(commands, patternMem, CL_TRUE, 0, sizeof(char) * pattern_size, pattern, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: Failed to write to source pattern!\n");
-        exit(1);
-    }
-    
-    int *pi = compute_prefix_function(pattern, pattern_size);
-    err = clEnqueueWriteBuffer(commands, computePatternMem, CL_TRUE, 0, sizeof(char) * strlen(pattern), pi, 0, NULL, NULL);
-    
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: Failed to write to source pattern!\n");
-        exit(1);
-    }
-
     results = clEnqueueMapBuffer(commands, output, CL_TRUE, CL_MAP_WRITE, 0, resultSize * sizeof(unsigned long), 0, NULL, NULL, NULL);
     
     
     // Set the arguments to our compute kernel
     //
-    
-    
-    size_t numOfThreads = local;
-    
-    
     
     err = 0;
     err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input);
@@ -267,7 +278,7 @@ void findStringGPU(cl_device_id device_id,
     err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &computePatternMem);
     err |= clSetKernelArg(kernel, 4, sizeof(unsigned long), &pattern_size);
     err |= clSetKernelArg(kernel, 5, sizeof(unsigned long), &text_source_size);
-    err |= clSetKernelArg(kernel, 6, sizeof(size_t), &numOfThreads);
+    
     
     if (err != CL_SUCCESS)
     {
@@ -275,12 +286,17 @@ void findStringGPU(cl_device_id device_id,
         exit(1);
     }
     
-    size_t global = local * partSize;
-    if (pow(2, maxWorkGroupSize) < global) {
-        global = pow(2, maxWorkGroupSize);
+    unsigned long tmp = text_source_size / 1024;
+    size_t global = text_source_size / tmp;
+    if ((text_source_size / (pattern_size * 4)) < global) {
+        global = (text_source_size / (pattern_size * 4)) ;
     }
+//    size_t global = (text_source_size / (pattern_size * 4)) ;
+    *partSize = text_source_size / global;
+    
     // Execute the kernel over the entire range of our 1d input data set
-    err = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &global, &local, 0, NULL, NULL);
+    err = clEnqueueNDRangeKernel(commands, kernel, 1, NULL, &global, NULL, 0, NULL, NULL);
+    
     if (err)
     {
         printf("Error: Failed to execute kernel!\n");
@@ -289,6 +305,7 @@ void findStringGPU(cl_device_id device_id,
     
     // Wait for the command commands to get serviced before reading back results
     //
+    
     clFinish(commands);
     
     
@@ -307,6 +324,7 @@ void findStringGPU(cl_device_id device_id,
     clReleaseMemObject(output);
     clReleaseMemObject(patternMem);
     clReleaseMemObject(computePatternMem);
+    return global;
 }
 
 
@@ -319,12 +337,71 @@ void printArray(unsigned long *array, unsigned long arraySize) {
 
 int main(int argc, char** argv)
 {
-   
+    const char* kernelCode =
+    "//"
+    "//  string-search.cl"
+    "//  hello"
+    "//"
+    "//  Created by Simon Harvan on 4.11.17."
+    "//"
+    "// Simple compute kernel which computes kmp of string given in input"
+    "//"
+    
+    "// KNUTH–MORRIS–PRATT"
+    "__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, unsigned long counter)"
+    "{"
+    
+    
+    "    unsigned long i;"
+    "    int k = -1;"
+    "    if (!pi){"
+    "        return;"
+    "    }"
+    "    unsigned long index = counter;"
+    
+    
+    "    for (i = 0; i < tsize; i++) {"
+    "        while (k > -1 && pattern[k+1] != target[i])"
+    "            k = pi[k];"
+    "        if (target[i] == pattern[k+1])"
+    "            k++;"
+    "        if (k == psize - 1) {"
+    "            output[counter] = index + i - k;"
+    "            counter++;"
+    "            k = -1;"
+    
+    "        }"
+    "    }"
+    "    output[counter] = -1;"
+    "    return;"
+    "}"
+    
+    "__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize)"
+    "{"
+    "    int threadId = get_global_id(0);"
+    "    unsigned long partSize = inputSize / get_global_size(0);"
+    "    if (partSize < psize) {"
+    "        partSize = psize;"
+    "    }"
+    
+    "    if (threadId * partSize >= inputSize) {"
+    "        return;"
+    "    }"
+    
+    "    unsigned long index = threadId * partSize;"
+    
+    "    if (index + psize - 1 > inputSize) {"
+    "        kmp(input + (index), partSize, pattern, pi, psize, output, index);"
+    "    }else {"
+    "        kmp(input + (index), partSize + psize - 1, pattern, pi, psize, output, index);"
+    "    }"
+    "}";
+    char fileName[] = "/Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/main.cl";
     int err;
     
     FILE *fp;
     char *textmemblock;
-    char fileName[] = "/Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/main.cl";
+    
     char textFileName[255];
     
     int fd;
@@ -348,7 +425,7 @@ int main(int argc, char** argv)
     
     
     size_t text_source_size;
-    int cpuOption = 0;
+    int multithreading = 0;
     int linesOption = 0;
     int offsetOption = 0;
     int fileLoaded = 0;
@@ -368,14 +445,10 @@ int main(int argc, char** argv)
             fileLoaded = 1;
             continue;
         }else if (!strcmp(argv[i], "-h")) {
-            printf("apsgrep [-logch] [-p pattern] [-f file]\n");
+            printf("aps [-tlod] [-p pattern] [-f file]\n\t-t\tmultithreading \n\t-l\touputs number of line and line itself\n\t-o\toutputs offset in bytes\n\t-d\touputs debug at the end\n\t-p\tpattern\n\t-f\tfile\n");
             return EXIT_SUCCESS;
-        }else if (!strcmp(argv[i], "-c")) {
-            cpuOption = 1;
-            i++;
-            continue;
-        }else if (!strcmp(argv[i], "-g")){
-            cpuOption = 0;
+        }else if (!strcmp(argv[i], "-t")) {
+            multithreading = 1;
             i++;
             continue;
         }else if (!strcmp(argv[i], "-l")) {
@@ -392,7 +465,7 @@ int main(int argc, char** argv)
             continue;
         }else {
             printf("wrong argument %s\n", argv[i]);
-            printf("apsgrep [-clo] [-p pattern] [-f file]\nNAME\napsgrep \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.\n");
+            printf("aps [-tlod] [-p pattern] [-f file]\nNAME\naps \nDESCRIPTION\nFile pattern searcher. Utility searches any given input files, selecting lines that match one patterns.\n");
             return EXIT_FAILURE;
         }
     }
@@ -427,23 +500,7 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    
     text_source_size = sbuf.st_size;
-    
-    /* Load the source code containing the kernel*/
-    fp = fopen(fileName, "r");
-    if (!fp) {
-        fprintf(stderr, "Failed to load kernel.\n");
-        exit(1);
-    }
-    source_str = (char*)malloc(MAX_SOURCE_SIZE);
-    source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
-    
-    
-    
-    
-    
-    
     
     unsigned long psize = strlen(pattern);
    
@@ -453,16 +510,28 @@ int main(int argc, char** argv)
 
     unsigned long partSize;
     
+    size_t numOfThreads = 1;
     //Original
-    if (cpuOption) {
+    if (!multithreading) {
         findStringCPU(textmemblock, text_source_size, pattern, results);
         partSize = text_source_size;
     } else {
         
+        
+        
+        /* Load the source code containing the kernel*/
+        fp = fopen(fileName, "r");
+        if (!fp) {
+            fprintf(stderr, "Failed to load kernel.\n");
+            exit(1);
+        }
+        source_str = (char*)malloc(MAX_SOURCE_SIZE);
+        source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
+        
+        
         // Connect to a compute device
         //
-        
-        err = clGetDeviceIDs(NULL, cpuOption ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+        err = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_CPU, 1, &device_id, NULL);
         if (err != CL_SUCCESS)
         {
             printf("Error: Failed to create a device group!\n");
@@ -564,12 +633,9 @@ int main(int argc, char** argv)
             printf("Error: Failed to retrieve kernel work group info! %d\n", err);
             exit(1);
         }
-        partSize = text_source_size / local;
-        if (partSize < psize) {
-            partSize = psize;
-        }
-    
-        findStringGPU(device_id, context, commands, program, kernel, local, globalSize, maxWorkGroupSize, textmemblock, text_source_size, pattern, results, resultSize);
+        
+        
+        numOfThreads = findStringGPU(device_id, context, commands, program, kernel, local, globalSize, maxWorkGroupSize, textmemblock, text_source_size, pattern, results, resultSize, &partSize);
         
         clReleaseProgram(program);
         clReleaseKernel(kernel);
@@ -582,9 +648,8 @@ int main(int argc, char** argv)
 
     if (debugOption) {
         printf("\n-------------\n");
-        printf("%s - true\n", cpuOption ? "CPU" : "GPU");
         printf("Input size - %luB\n", text_source_size);
-        printf("Number of threads - %lu\n-------------\n", cpuOption ? 1 : local);
+        printf("Number of threads - %lu\n-------------\n", numOfThreads);
     }
     
     

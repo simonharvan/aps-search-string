@@ -26,20 +26,20 @@ __kernel void kmp(__global char *target, unsigned long tsize, __global char* pat
         if (target[i] == pattern[k+1])
             k++;
         if (k == psize - 1) {
-            output[counter] = index + i - k - 1;
-            
+            output[counter] = index + i - k;
             counter++;
             k = -1;
             
         }
     }
+    output[counter] = -1;
     return;
 }
 
-__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize, size_t numOfThreads)
+__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize)
 {
     int threadId = get_global_id(0);
-    unsigned long partSize = inputSize / numOfThreads;
+    unsigned long partSize = inputSize / get_global_size(0);
     if (partSize < psize) {
         partSize = psize;
     }

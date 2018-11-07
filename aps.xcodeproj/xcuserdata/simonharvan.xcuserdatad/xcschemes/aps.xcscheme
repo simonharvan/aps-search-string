@@ -63,7 +63,7 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "-p Lorem"
+            argument = "-p ipsum"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
@@ -72,10 +72,10 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "-l"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "-f /Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/big.txt"
+            argument = "-f /Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/0.txt"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
