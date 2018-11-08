@@ -63,11 +63,11 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "-p ipsum"
+            argument = "-p ip"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "-c"
+            argument = "-t"
             isEnabled = "NO">
          </CommandLineArgument>
          <CommandLineArgument

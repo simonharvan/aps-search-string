@@ -1,8 +1,9 @@
 //
-// File:       main.c
+// File:        main.c
 //
-// Abstract:   Simple searching string in large text files. User can choose whether he wants to execute on GPU or CPU. User can enter file, pattern he is searching and choose desired device for execution.
-// Version:    <1.0>
+// Abstract:    Simple searching string in large text files. User can enter file, pattern he is searching.
+//              Program uses Knuth-Morris-Pratt algorithm.
+// Version:     <2.1>
 //
 // Copyright ( C ) 2017 Simon Harvan. All Rights Reserved.
 //
@@ -22,17 +23,13 @@
 #include <OpenCL/opencl.h>
 
 ////////////////////////////////////////////////////////////////////////////////
+#define OPTIMAL_NUMBER_OF_THREADS 2048
+#define MIN_PART_SIZE_FACTOR 4
+#define NEWLINE '\n'
 
-// Use a static data size for simplicity
-//
-#define MAX_SOURCE_SIZE (0x100000)
-
-////////////////////////////////////////////////////////////////////////////////
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
+/**
+ Function for calculating prefix of pattern we are trying to find with KMP algorithm. Parameters are pattern and pattern length.
+ */
 int *compute_prefix_function(char *pattern, unsigned long psize)
 {
     int k = -1;
@@ -52,6 +49,13 @@ int *compute_prefix_function(char *pattern, unsigned long psize)
     return pi;
 }
 
+/**
+ Function returns what line character is on. It takes:
+ newLines       - array of longs, which holds offsets of new line characters (\n).
+ max            - size of newLines array
+ charNum        - offset of character we want to find
+ bonds          - array of two longs, where we can store bonds of line
+ */
 unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charNum, unsigned long *bonds) {
     for (int i = 1; i < max-1; i++) {
         if (*(newLines + i) <= charNum && charNum < *(newLines + i + 1)){
@@ -65,71 +69,65 @@ unsigned long findWhatLine(unsigned long *newLines, int max, unsigned long charN
     return max - 1;
 }
 
-char *substring(char *string, unsigned long position, unsigned long length)
-{
-    char *pointer;
-    int c;
-    
-    pointer = (char*) malloc(length+1 * sizeof(char));
-    
-    if (pointer == NULL)
-    {
-        printf("Unable to allocate memory.\n");
-        exit(1);
-    }
-    
-    for (c = 0 ; c < length ; c++)
-    {
-        *(pointer+c) = *(string+position-1);
-        string++;
-    }
-    
-    *(pointer+c) = '\0';
-    
-    return pointer;
-}
 
-void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, size_t local, unsigned long psize, unsigned long partSize, int linesOption, int offsetOption) {
+/**
+ Function prints out results from both CPU singlethreaded or multithreaded calculation.
+ text_source        - is haystack, where we want to find pattern (needle)
+ text_source_size   - length of text_source
+ result             - array of unsigned longs with results, they might be in uninterupted array or they might be splitted into more arrays, but then they have to have -1 at the end of each one.
+ resultSize         - total length of result array
+ partSize           - size of one part in result array
+ linesOption        - type of output true for printing out lines
+ offsetOption       - type of output true for printing out offset
+ */
+void printResult(char* text_source, unsigned long text_source_size, unsigned long *result, unsigned long resultSize, unsigned long partSize, int linesOption, int offsetOption) {
+    
+    
     bool firsPart = true;
     int numberOfFinds = 0;
-    if (linesOption){
+    
+    
+    if (linesOption || offsetOption){
         unsigned long *newLines = (unsigned long*)malloc(text_source_size * sizeof(unsigned long));
+        //set first line to 0
         newLines[1] = 0;
+        
+        //counter begins with 2, because of finding first linebreak is actually linebreak to 2nd line
         int counter = 2;
+        
         for(unsigned long j = 0; j < text_source_size; j++) {
-            if (text_source[j] == '\n') {
+            if (text_source[j] == NEWLINE) {
                 newLines[counter] = j;
                 counter++;
             }
         }
+        //set last line to end of file
         newLines[counter] = text_source_size;
+        
+        
         unsigned long lineNumber;
-        unsigned long lastLineNumber = 0;
-        unsigned long *lineBonds = (unsigned long*) malloc(2 * sizeof(unsigned long));
+        unsigned long lineBonds[] = {0, 0};
+        
+        
         for (unsigned long i = 0; i < resultSize; i++) {
+            //  when result is -1 we can jump to next part. when result is 0 and it is not in the first part, it is also jumping as a fail safe, because of last part, when its not divisible by partSize
             if (result[i] == -1 || (result[i] == 0 && !firsPart)){
                 i = (i / partSize + 1) * partSize - 1;
                 firsPart = false;
                 continue;
             }
             numberOfFinds++;
-            lineNumber = findWhatLine(newLines, counter, result[i], lineBonds);
-            if (lineNumber > lastLineNumber){
-                printf("Find match on line %lu\n", lineNumber);
-                printf("%s\n", substring(text_source, lineBonds[0] + 1, lineBonds[1] - lineBonds[0]));
+            if (offsetOption) {
+                printf("Offset %lu\n", result[i] + 1);
             }
-            lastLineNumber = lineNumber;
-            
-        }
-    } else if(offsetOption) {
-        for (unsigned long i = 0; i < resultSize; i++) {
-            if (result[i] == -1 || (result[i] == 0 && !firsPart)){
-                i = (i / partSize + 1) * partSize - 1;
-                firsPart = false;
+            if (!linesOption){
                 continue;
             }
-            numberOfFinds++;
-            printf("Find match with offset %lu\n", result[i] + 1);
+            if (result[i] < lineBonds[0] || result[i] > lineBonds[1]){
+                lineNumber = findWhatLine(newLines, counter, result[i], lineBonds);
+                printf("Line %lu:", lineNumber);
+                printf ("%.*s\n", lineBonds[1] - lineBonds[0], &(text_source[lineBonds[0]]));
+            }
         }
     } else {
         for (unsigned long i = 0; i < resultSize; i++) {
@@ -142,9 +140,6 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
         }
     }
     
-    
-    
-    
     if (numberOfFinds > 0) {
         printf("\nNumber of matches: %d\n", numberOfFinds);
     }else {
@@ -152,7 +147,14 @@ void printResult(char* text_source, unsigned long text_source_size, unsigned lon
     }
 }
 
-void findStringCPU(char* text_source,
+/**
+ Function for searching string in string using KMP algorithm. Returns all occurances and their offset from beginning.
+ text_source        - haystack array of characters.
+ text_source_size   - text_source length
+ pattern            - needle that we are trying to find
+ results            - array of longs, where we are setting results
+ */
+void findStringSingleThread(char* text_source,
                    unsigned long text_source_size,
                    char* pattern,
                    unsigned long results[]) {
@@ -184,14 +186,25 @@ void findStringCPU(char* text_source,
 
 }
 
-size_t findStringGPU(cl_device_id device_id,
+
+/**
+ Function for searching string in string using KMP algorithm using OpenCL multithreading. Returns all occurances and their offset from beginning.
+ device_id          - cl_device_id returned from OpenCL API call
+ context            - cl_command_queue queue into which program is set
+ program            - cl_program built program
+ kernel             - cl_kernel the compute kernel in the program we wish to run
+ text_source        - haystack array of characters
+ text_source_size   - length of text_source
+ pattern            - needle that we are trying to find array of char
+ results            - array of longs, where we are setting results
+ resultsSize        - length of results array
+ partSize           - pointer to unsigned long variable, where we set size of one part
+ */
+size_t findStringMultiThread(cl_device_id device_id,
                 cl_context context,
                 cl_command_queue commands,
                 cl_program program,
                 cl_kernel kernel,
-                size_t local,         // local domain size for our calculation
-                cl_uint globalSize,
-                size_t maxWorkGroupSize,
                 char* text_source,
                 unsigned long text_source_size,
                 char* pattern,
@@ -203,9 +216,9 @@ size_t findStringGPU(cl_device_id device_id,
     
     
     cl_mem input;                       // device memory used for the input array
-    cl_mem patternMem;                       // device memory used for the input array
+    cl_mem patternMem;                  // device memory used for the pattern array
     cl_mem computePatternMem;
-    cl_mem output;// device memory used for the output array
+    cl_mem output;                      // device memory used for the output array
     
     
     
@@ -286,12 +299,15 @@ size_t findStringGPU(cl_device_id device_id,
         exit(1);
     }
     
-    unsigned long tmp = text_source_size / 1024;
+    
+    // Compute number of workers (threads) for this text file
+    unsigned long tmp = round(text_source_size / OPTIMAL_NUMBER_OF_THREADS) + 1;
     size_t global = text_source_size / tmp;
-    if ((text_source_size / (pattern_size * 4)) < global) {
-        global = (text_source_size / (pattern_size * 4)) ;
+    
+    
+    if ((text_source_size / (pattern_size * MIN_PART_SIZE_FACTOR)) < global) {
+        global = (text_source_size / (pattern_size * MIN_PART_SIZE_FACTOR)) ;
     }
-//    size_t global = (text_source_size / (pattern_size * 4)) ;
     *partSize = text_source_size / global;
     
     // Execute the kernel over the entire range of our 1d input data set
@@ -327,39 +343,19 @@ size_t findStringGPU(cl_device_id device_id,
     return global;
 }
 
-
-void printArray(unsigned long *array, unsigned long arraySize) {
-    for (int i = 0; i < arraySize; i++) {
-        printf("%lu - %d\n", array[i], i);
-    }
-}
-
-
 int main(int argc, char** argv)
 {
-    const char* kernelCode =
-    "//"
-    "//  string-search.cl"
-    "//  hello"
-    "//"
-    "//  Created by Simon Harvan on 4.11.17."
-    "//"
-    "// Simple compute kernel which computes kmp of string given in input"
-    "//"
     
-    "// KNUTH–MORRIS–PRATT"
+    // source string of kernel
+    const char* source_str =
     "__kernel void kmp(__global char *target, unsigned long tsize, __global char* pattern, __global int *pi, unsigned long psize, __global unsigned long *output, unsigned long counter)"
     "{"
-    
-    
     "    unsigned long i;"
     "    int k = -1;"
     "    if (!pi){"
     "        return;"
     "    }"
     "    unsigned long index = counter;"
-    
-    
     "    for (i = 0; i < tsize; i++) {"
     "        while (k > -1 && pattern[k+1] != target[i])"
     "            k = pi[k];"
@@ -369,13 +365,11 @@ int main(int argc, char** argv)
     "            output[counter] = index + i - k;"
     "            counter++;"
     "            k = -1;"
-    
     "        }"
     "    }"
     "    output[counter] = -1;"
     "    return;"
     "}"
-    
     "__kernel void run(__global char* input, __global unsigned long* output, __global char* pattern, __global int* pi,  unsigned long psize, unsigned long inputSize)"
     "{"
     "    int threadId = get_global_id(0);"
@@ -383,23 +377,19 @@ int main(int argc, char** argv)
     "    if (partSize < psize) {"
     "        partSize = psize;"
     "    }"
-    
     "    if (threadId * partSize >= inputSize) {"
     "        return;"
     "    }"
-    
     "    unsigned long index = threadId * partSize;"
-    
     "    if (index + psize - 1 > inputSize) {"
     "        kmp(input + (index), partSize, pattern, pi, psize, output, index);"
     "    }else {"
     "        kmp(input + (index), partSize + psize - 1, pattern, pi, psize, output, index);"
     "    }"
     "}";
-    char fileName[] = "/Users/simonharvan/Documents/Development/C/aps-search-string-2/aps/main.cl";
     int err;
     
-    FILE *fp;
+    
     char *textmemblock;
     
     char textFileName[255];
@@ -409,7 +399,7 @@ int main(int argc, char** argv)
 
     char pattern[255];
     
-    size_t local = 0;                       // local domain size for our calculation
+    size_t local = 0;                   // local domain size for our calculation
     cl_uint globalSize;
     
     cl_device_id device_id;             // compute device id
@@ -420,8 +410,7 @@ int main(int argc, char** argv)
     
     
     
-    char *source_str;
-    size_t source_size;
+    
     
     
     size_t text_source_size;
@@ -502,8 +491,6 @@ int main(int argc, char** argv)
 
     text_source_size = sbuf.st_size;
     
-    unsigned long psize = strlen(pattern);
-   
     unsigned long resultSize = text_source_size;
     
     unsigned long *results = calloc(resultSize, sizeof(unsigned long));
@@ -513,22 +500,9 @@ int main(int argc, char** argv)
     size_t numOfThreads = 1;
     //Original
     if (!multithreading) {
-        findStringCPU(textmemblock, text_source_size, pattern, results);
+        findStringSingleThread(textmemblock, text_source_size, pattern, results);
         partSize = text_source_size;
     } else {
-        
-        
-        
-        /* Load the source code containing the kernel*/
-        fp = fopen(fileName, "r");
-        if (!fp) {
-            fprintf(stderr, "Failed to load kernel.\n");
-            exit(1);
-        }
-        source_str = (char*)malloc(MAX_SOURCE_SIZE);
-        source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
-        
-        
         // Connect to a compute device
         //
         err = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_CPU, 1, &device_id, NULL);
@@ -635,7 +609,7 @@ int main(int argc, char** argv)
         }
         
         
-        numOfThreads = findStringGPU(device_id, context, commands, program, kernel, local, globalSize, maxWorkGroupSize, textmemblock, text_source_size, pattern, results, resultSize, &partSize);
+        numOfThreads = findStringMultiThread(device_id, context, commands, program, kernel, textmemblock, text_source_size, pattern, results, resultSize, &partSize);
         
         clReleaseProgram(program);
         clReleaseKernel(kernel);
@@ -644,7 +618,7 @@ int main(int argc, char** argv)
     }
     
 
-    printResult(textmemblock, text_source_size, results, resultSize, local, psize, partSize, linesOption, offsetOption);
+    printResult(textmemblock, text_source_size, results, resultSize, partSize, linesOption, offsetOption);
 
     if (debugOption) {
         printf("\n-------------\n");
@@ -658,5 +632,3 @@ int main(int argc, char** argv)
     
     return 0;
 }
-
-///Users/simonharvan/Documents/Development/C/aps/aps/tex.txt
