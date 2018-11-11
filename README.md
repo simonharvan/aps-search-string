@@ -10,12 +10,12 @@ Simple searching string in large text files. User can enter file and pattern he 
 ```
 aps [-tlodh] [-p pattern] [-f file]
 ```
-*-t - multithreading option (default is without)
-*-l - ouputs number of line and line itself
-*-d - debug output at the end
-*-p <pattern> - input needle (required)
-*-f <file> - input file haystack (required)
-*-h - help output
+* -t - multithreading option (default is without)
+* -l - ouputs number of line and line itself
+* -d - debug output at the end
+* -p <pattern> - input needle (required)
+* -f <file> - input file haystack (required)
+* -h - help output
 
 ## Installation with clone
 ```
